@@ -1,1 +1,1 @@
-# digitalHumanitiesDeepLearning
+# Digital Humanities and Deep Learning
