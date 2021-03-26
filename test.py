@@ -8,6 +8,12 @@ import sklearn
 import sklearn.ensemble
 import sklearn.metrics
 from lime.lime_text import LimeTextExplainer
+from tensorflow import keras
+from tensorflow.keras import layers
+import random
+from keras.utils import to_categorical
+from keras.models import Sequential
+from keras.layers import Dense
 
 poems_english = readPoems('tsv/english.tsv')
 
@@ -67,9 +73,12 @@ label_dict = {
 labels_num = []
 for lab in labels:
     labels_num.append(label_dict[lab])
+    
+
+one_hot_labels = to_categorical(labels_num)
 
 embeddings = model.encode(sentences)
-
+"""
 rf = sklearn.ensemble.RandomForestClassifier(n_estimators=500)
 rf.fit(embeddings, labels_num)
 
@@ -101,3 +110,48 @@ print ('\n'.join(map(str, exp.as_list(label=top_labs[0]))))
 print("Explanation for class {}".format(top_labs[1]))
 #print(exp.as_list(label=top_labs[1]))
 print ('\n'.join(map(str, exp.as_list(label=top_labs[1]))))
+"""
+random.seed(8)
+all_data = [(embeddings[i],one_hot_labels[i]) for i in range(len(embeddings))]
+print(all_data[0])
+random.shuffle(all_data)
+print(all_data[0])
+embeddings = [emb for emb,_ in all_data]
+labels = [lab for _, lab in all_data]
+train_data = np.array(embeddings[:int(0.8*len(embeddings))])
+test_data = np.array(embeddings[int(0.8*len(embeddings)):])
+train_labels = np.array(labels[:int(0.8*len(embeddings))])
+test_labels = np.array(labels[int(0.8*len(embeddings)):])
+print(train_data.shape)
+print(train_labels.shape)
+print(train_data[:10])
+print(train_labels[:10])
+
+
+"""
+x = layers.Input(shape=(512), name="InputLayer")
+h1 = layers.Dense(units=150, activation="relu")(x)
+    #a1 = layers.Activation(activation="relu")(h1)
+h2 = layers.Dense(units=150, activation="relu")(h1)
+    #a1 = layers.Activation(activation="relu")(h1)
+y = layers.Dense(units=9, activation="softmax")(h2)
+mdl = keras.Model(inputs=x, outputs=y, name="logreg2_model")
+mdl.compile(optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
+"""
+
+mdl = Sequential()
+mdl.add(Dense(100, input_dim=512, kernel_initializer="uniform",
+    activation="relu"))
+mdl.add(Dense(9, activation="softmax", kernel_initializer="uniform"))
+mdl.compile(loss="categorical_crossentropy", optimizer="adam",
+    metrics=["accuracy"])
+
+mdl.fit(train_data, train_labels, epochs=20,
+    verbose=1)
+print("[INFO] evaluating on testing set...")
+(loss, accuracy) = mdl.evaluate(test_data, test_labels,
+    batch_size=50, verbose=1)
+print("[INFO] loss={:.4f}, accuracy: {:.4f}%".format(loss,
+    accuracy * 100))
+
+
