@@ -2,6 +2,7 @@ from simplereader import readPoems
 from sentence_transformers import SentenceTransformer, util
 #from simpletransformers.classification import MultiLabelClassificationModel
 import csv
+import itertools
 import numpy as np
 import lime
 import sklearn
@@ -27,48 +28,46 @@ import pandas as pd
 poems_english = readPoems('tsv/english.tsv')
 poems_german = readPoems('tsv/emotion.german.tsv')
 
-# extract sentences with one label
-data = []
-for poem in poems_english:
-    strophen = poem[1]
-    for strophe in strophen:
-        tmp = [strophe[0]]
-        labels = strophe[1].split(" --- ")
-        label = labels[0]
-        tmp.append(label)
-        data.append(tmp)
-for poem in poems_german:
-    strophen = poem[1]
-    for strophe in strophen:
-        tmp = [strophe[0]]
-        labels = strophe[1].split(" --- ")
-        label = labels[0]
-        tmp.append(label)
-        data.append(tmp)
-        
-data = np.array(data)
-
-# split data into sentences and labels
-sentences = data[:,0]
-labels = data[:,1]
-
-# transform labels into numerical values and one hot encodings
+#set up label dictionary
 label_dict = {
     'Sadness': 0, 'Humor': 1, 'Suspense': 2, 'Nostalgia': 3, 'Uneasiness': 4, 'Annoyance': 5, 'Awe / Sublime': 6, 'Vitality': 7, 'Beauty / Joy' : 8
 }
 
-labels_num = []
-for lab in labels:
-    labels_num.append(label_dict[lab])
-one_hot_labels = to_categorical(labels_num)
+#array of stanzas
+stanzas = []
+
+#array of most prominent label for each stanza
+labels = []
+
+# extract sentences with one label
+for poem in itertools.chain(poems_english, poems_german):
+    for stanza in poem[1:]:
+        labelsPerStanza = []
+        currentStanzaIndex = len(stanzas)
+        newStanza = 1
+        for line in stanza:
+            if newStanza:
+                stanzas.append(line[0])
+                newStanza = 0
+            else:
+                stanzas[currentStanzaIndex] += " " + line[0]
+            labelsPerStanza.extend(line[1].split(" --- "))
+            labelsPerStanza.extend(line[2].split(" --- "))
+        counter = [0,0,0,0,0,0,0,0,0]
+        for label in labelsPerStanza:
+            counter[label_dict[label]] += 1
+        labels.append(np.argmax(counter))
+
+# transform labels into numerical values and one hot encodings
+one_hot_labels = to_categorical(labels)
 
 # analyze distribution of labels in dataset
-df = pd.DataFrame({"labels": labels_num})
+df = pd.DataFrame({"labels": labels})
 print(df['labels'].value_counts())
 
 # use pretrained multilingual model to encode sentences
 model = SentenceTransformer('distiluse-base-multilingual-cased-v1')
-embeddings = model.encode(sentences)
+embeddings = model.encode(stanzas)
 
 # shuffle data and split into train and test set
 all_data = [(embeddings[i],one_hot_labels[i]) for i in range(len(embeddings))]
@@ -133,22 +132,22 @@ print(precision)
 print(recall)
 
 # apply LIME to obtain explanations for a specific instance
-def pipeline(sentence, mdl=mdl, model=model):
-    n = len(sentence)
-    embedded = model.encode(sentence)
+def pipeline(stanza, mdl=mdl, model=model):
+    n = len(stanza)
+    embedded = model.encode(stanza)
     print(embedded.shape)
     return mdl.predict(embedded, batch_size=embedded.shape[0])
 
 idx = 78
 print("True Label: ", labels[idx])
-emb = np.array(model.encode(sentences[idx]))
+emb = np.array(model.encode(stanzas[idx]))
 emb = emb.reshape((512,1))
 emb = emb.T
 print("Predicted Probs: ", mdl.predict(emb, batch_size=1))
 
 class_names = ['Sadness', 'Humor', 'Suspense', 'Nostalgia', 'Uneasiness', 'Annoyance', 'Awe / Sublime', 'Vitality', 'Beauty / Joy']
 explainer = LimeTextExplainer(class_names=class_names)
-exp = explainer.explain_instance(sentences[idx], pipeline, num_features=6, top_labels=2)
+exp = explainer.explain_instance(stanzas[idx], pipeline, num_features=6, top_labels=2)
 top_labs = exp.available_labels()
 
 print("Explanation for class {}".format(top_labs[0]))
