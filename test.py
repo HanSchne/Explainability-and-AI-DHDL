@@ -27,6 +27,7 @@ import pandas as pd
 # read poems using simplereader
 poems_english = readPoems('tsv/english.tsv')
 poems_german = readPoems('tsv/emotion.german.tsv')
+poems_chinese = readPoems('tsv/chinese.tsv')
 
 #set up label dictionary
 label_dict = {
@@ -40,7 +41,7 @@ stanzas = []
 labels = []
 
 # extract sentences with one label
-for poem in itertools.chain(poems_english, poems_german):
+for poem in itertools.chain(poems_english, poems_german, poems_chinese):
     for stanza in poem[1:]:
         labelsPerStanza = []
         currentStanzaIndex = len(stanzas)
