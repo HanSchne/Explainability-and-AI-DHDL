@@ -28,7 +28,7 @@ def main(TUNING=False, ANCHOR=True, LIME=True):
     # read poems using simplereader
     poems_english = readPoems('tsv/english.tsv')
     poems_german = readPoems('tsv/emotion.german.tsv')
-    poems_chinese = readPoems('tsv/chinese_2.tsv')
+    poems_chinese = readPoems('tsv/chinese.tsv')
 
     #set up label dictionary
     label_dict = {
