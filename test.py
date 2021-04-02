@@ -5,9 +5,8 @@ import csv
 import itertools
 import numpy as np
 import lime
-import sklearn
-import sklearn.ensemble
-import sklearn.metrics
+import spacy
+from anchor import anchor_text
 from lime.lime_text import LimeTextExplainer
 from numpy.random import seed
 import tensorflow
@@ -122,7 +121,7 @@ def main(TUNING=False, ANCHOR=True, LIME=True):
                         max_config = (lr,epoch,middle_node)
         print(max_config)
         
-        max_config = (0.01, 7, 150)
+    max_config = (0.01, 7, 150)
 
 
     # use final model
@@ -138,7 +137,9 @@ def main(TUNING=False, ANCHOR=True, LIME=True):
     print("loss={:.4f}, accuracy: {:.4f}%".format(loss, accuracy * 100))
     print("precision={:.4f}%".format(precision * 100))
     print("recall={:.4f}%".format(recall * 100))
-
+    
+    
+    class_names = ['Sadness', 'Humor', 'Suspense', 'Nostalgia', 'Uneasiness', 'Annoyance', 'Awe / Sublime', 'Vitality', 'Beauty / Joy']
     #------------------------------------------------------------LIME--------------------------------------------------------------------------------------------
     # apply LIME to obtain explanations for a specific instance
     def pipeline(stanza, mdl=mdl, model=model):
@@ -153,7 +154,6 @@ def main(TUNING=False, ANCHOR=True, LIME=True):
         emb = emb.T
         print("Predicted Probs: ", mdl.predict(emb, batch_size=1))
 
-        class_names = ['Sadness', 'Humor', 'Suspense', 'Nostalgia', 'Uneasiness', 'Annoyance', 'Awe / Sublime', 'Vitality', 'Beauty / Joy']
         explainer = LimeTextExplainer(class_names=class_names)
         exp = explainer.explain_instance(stanzas[idx], pipeline, num_features=6, top_labels=2)
         top_labs = exp.available_labels()
@@ -167,16 +167,35 @@ def main(TUNING=False, ANCHOR=True, LIME=True):
         print ('\n'.join(map(str, exp.as_list(label=top_labs[1]))))
 
     #----------------------------------------------------------ANCHOR---------------------------------------------------------------------------------------------
+    def predict_label(stanza):
+        embedded = model.encode(stanza)
+        probs = mdl.predict(embedded, batch_size=embedded.shape[0])
+        return [np.argmax(probs)]
+    
     if ANCHOR is True:
         nlp = spacy.load('en_core_web_lg')
         explainer = anchor_text.AnchorText(nlp, class_names, use_unk_distribution=True)
-        print(explainer.class_names)
-
-        pred = explainer.class_names[predict_qw([text])[0]]
-        alternative =  explainer.class_names[1 - predict_lr([text])[0]]
+        
+        idx = 56
+        text = stanzas[idx]
+        print(predict_label([text]))
+        pred = explainer.class_names[predict_label([text])[0]]
+        #alternative =  explainer.class_names[1 - predict_label([text])[0]]
         print('Prediction: %s' % pred)
-        #exp = explainer.explain_instance(text, predict_lr, threshold=0.95)
+        exp = explainer.explain_instance(text, predict_label, threshold=0.95)
+        
+        
+        print('Anchor: %s' % (' AND '.join(exp.names())))
+        print('Precision: %.2f' % exp.precision())
+        print()
+        print('Examples where anchor applies and model predicts %s:' % pred)
+        print()
+        print('\n'.join([x[0] for x in exp.examples(only_same_prediction=True)]))
+        print()
+        print('Examples where anchor applies and model predicts %s:' % alternative)
+        print()
+        print('\n'.join([x[0] for x in exp.examples(partial_index=0, only_different_prediction=True)]))
 
 
 if __name__ == "__main__":
-    main(TUNING=False,ANCHOR=True, LIME=False)
+    main(TUNING=False, ANCHOR=True, LIME=False)
