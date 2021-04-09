@@ -27,7 +27,7 @@ import seaborn as sns
 
 sns.set_theme()
 
-def main(TUNING=False, ANCHOR=True, LIME=True, STATISTICS=True):
+def main(TRAIN=False, TUNING=False, ANCHOR=False, LIME=True, STATISTICS=False):
     # read poems using simplereader
     poems_english = readPoems('tsv/english.tsv')
     poems_german = readPoems('tsv/emotion.german.tsv')
@@ -105,7 +105,7 @@ def main(TUNING=False, ANCHOR=True, LIME=True, STATISTICS=True):
         plt.show()
 
     
-    # transform labels into numerical values and one hot encodings
+    # transform labels into one hot encodings
     one_hot_labels = to_categorical(labels)
 
     # analyze distribution of labels in dataset
@@ -117,10 +117,11 @@ def main(TUNING=False, ANCHOR=True, LIME=True, STATISTICS=True):
     embeddings = model.encode(stanzas)
 
     # shuffle data and split into train and test set
-    all_data = [(embeddings[i],one_hot_labels[i]) for i in range(len(embeddings))]
+    all_data = [(embeddings[i],one_hot_labels[i], i) for i in range(len(embeddings))]
     random.shuffle(all_data)
-    embeddings = [emb for emb,_ in all_data]
-    labels = [lab for _, lab in all_data]
+    embeddings = [emb for emb, _, _ in all_data]
+    labels = [lab for _, lab, _ in all_data]
+    indices = [idx for _, _, idx in all_data]
 
     train_data = np.array(embeddings[:int(0.75*len(embeddings))])
     train_labels = np.array(labels[:int(0.75*len(embeddings))])
@@ -150,13 +151,13 @@ def main(TUNING=False, ANCHOR=True, LIME=True, STATISTICS=True):
                         activation="relu"))
                     mdl.add(Dense(9, activation="softmax", kernel_initializer="uniform"))
                     mdl.compile(loss="categorical_crossentropy", optimizer=adam,
-                        metrics=["accuracy"])
+                        metrics=["categorical_accuracy"])
 
                     mdl.fit(train_data, train_labels, epochs=epoch,
                         verbose=1)
                     print("evaluating on dev set...")
                     (loss, accuracy) = mdl.evaluate(dev_data, dev_labels, verbose=1)
-                    print("loss={:.4f}, accuracy: {:.4f}%".format(loss,
+                    print("loss: {:.4f}, accuracy: {:.4f}%".format(loss,
                         accuracy * 100))
                     losses.append(loss)
                     accuracies.append(accuracy)
@@ -165,23 +166,46 @@ def main(TUNING=False, ANCHOR=True, LIME=True, STATISTICS=True):
                         max_config = (lr,epoch,middle_node)
         print(max_config)
         
-    max_config = (0.01, 7, 150)
+    #max_config = (0.01, 7, 150)
 
-
+    if TRAIN is True:
     # use final model
-    adam = Adam(learning_rate=max_config[0])
-    mdl = Sequential()
-    mdl.add(Dense(max_config[2], input_dim=512, kernel_initializer="uniform", activation="relu"))
-    mdl.add(Dense(9, activation="softmax", kernel_initializer="uniform"))
-    mdl.compile(loss="categorical_crossentropy", optimizer=adam, metrics=["accuracy", keras.metrics.Precision(), keras.metrics.Recall()])
+        adam = Adam(learning_rate=max_config[0])
+        mdl = Sequential()
+        mdl.add(Dense(max_config[2], input_dim=512, kernel_initializer="uniform", activation="relu"))
+        mdl.add(Dense(9, activation="softmax", kernel_initializer="uniform"))
+        mdl.compile(loss="categorical_crossentropy", optimizer=adam, metrics=["categorical_accuracy"])
 
-    mdl.fit(train_data, train_labels, epochs=max_config[1], verbose=1)
-    print("evaluating on test set...")
-    (loss, accuracy, precision, recall) = mdl.evaluate(test_data, test_labels, verbose=1)
-    print("loss={:.4f}, accuracy: {:.4f}%".format(loss, accuracy * 100))
-    print("precision={:.4f}%".format(precision * 100))
-    print("recall={:.4f}%".format(recall * 100))
+        mdl.fit(train_data, train_labels, epochs=max_config[1], verbose=1)
+        print("evaluating on test set...")
+        (loss, accuracy) = mdl.evaluate(test_data, test_labels, verbose=1)
+        print("loss={:.4f}, accuracy: {:.4f}%".format(loss, accuracy * 100))
+        #print("precision={:.4f}%".format(precision * 100))
+        #print("recall={:.4f}%".format(recall * 100))
+        mdl.save('emotion_classifier')
     
+    mdl = keras.models.load_model('emotion_classifier')
+    (loss, accuracy) = mdl.evaluate(test_data, test_labels, verbose=1)
+    
+    
+    y_pred = mdl.predict(test_data, batch_size=test_data.shape[0])
+        
+    wrong_classified_idx = []
+        
+    for j, idx in enumerate(indices[int(0.875*len(embeddings)):]):
+        if np.argmax(y_pred[j]) != np.where(test_labels[j] == 1.0)[0]:
+            wrong_classified_idx.append(idx)
+
+    print("These stanzas were wronlgy classified:")
+    print(wrong_classified_idx)
+        
+    wrong_classified_en = [idx for idx in wrong_classified_idx if idx < 167]
+    wrong_classified_ger = [idx for idx in wrong_classified_idx if (idx >= 167 and idx < 688)]
+    wrong_classified_ch = [idx for idx in wrong_classified_idx if idx >= 688]
+        
+    print("Number of wrong classified stanzas - English: ", len(wrong_classified_en))
+    print("Number of wrong classified stanzas - German: ", len(wrong_classified_ger))
+    print("Number of wrong classified stanzas - Chinese: ", len(wrong_classified_ch))
     
     class_names = ['Sadness', 'Humor', 'Suspense', 'Nostalgia', 'Uneasiness', 'Annoyance', 'Awe / Sublime', 'Vitality', 'Beauty / Joy']
     #------------------------------------------------------------LIME--------------------------------------------------------------------------------------------
@@ -191,6 +215,7 @@ def main(TUNING=False, ANCHOR=True, LIME=True, STATISTICS=True):
         return mdl.predict(embedded, batch_size=embedded.shape[0])
 
     if LIME is True:
+        """
         idx = 78
         print("True Label: ", labels[idx])
         emb = np.array(model.encode(stanzas[idx]))
@@ -203,12 +228,38 @@ def main(TUNING=False, ANCHOR=True, LIME=True, STATISTICS=True):
         top_labs = exp.available_labels()
 
         print("Explanation for class {}".format(top_labs[0]))
-        #print(exp.as_list(label=top_labs[0]))
         print ('\n'.join(map(str, exp.as_list(label=top_labs[0]))))
 
         print("Explanation for class {}".format(top_labs[1]))
-        #print(exp.as_list(label=top_labs[1]))
         print ('\n'.join(map(str, exp.as_list(label=top_labs[1]))))
+        
+        fig = exp.as_pyplot_figure(top_labs[0])
+        plt.show()
+        fig_2 = exp.as_pyplot_figure(top_labs[1])
+        """
+        
+        for idx in itertools.chain(wrong_classified_ger[:5], wrong_classified_en[:5]):
+            print("True Label: ", one_hot_labels[idx])
+            emb = np.array(model.encode(stanzas[idx]))
+            emb = emb.reshape((512,1))
+            emb = emb.T
+            print("Predicted Probabilities: ", mdl.predict(emb, batch_size=1))
+
+            explainer = LimeTextExplainer(class_names=class_names)
+            exp = explainer.explain_instance(stanzas[idx], pipeline, num_features=6, top_labels=2)
+            top_labs = exp.available_labels()
+
+            print("Explanation for class {}".format(top_labs[0]))
+            print ('\n'.join(map(str, exp.as_list(label=top_labs[0]))))
+
+            print("Explanation for class {}".format(top_labs[1]))
+            print ('\n'.join(map(str, exp.as_list(label=top_labs[1]))))
+            
+            fig = exp.as_pyplot_figure(top_labs[0])
+            plt.show()
+            fig_2 = exp.as_pyplot_figure(top_labs[1])
+            plt.show()
+        
 
     #----------------------------------------------------------ANCHOR---------------------------------------------------------------------------------------------
     def predict_label(stanza):
@@ -248,4 +299,4 @@ def main(TUNING=False, ANCHOR=True, LIME=True, STATISTICS=True):
 
 
 if __name__ == "__main__":
-    main(TUNING=False, ANCHOR=False, LIME=True, STATISTICS=False)
+    main(LIME=True, TRAIN=False,TUNING=False)
