@@ -22,13 +22,19 @@ from keras.layers import Dense
 from keras.optimizers import Adam
 import pandas as pd
 import ipdb
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-def main(TUNING=False, ANCHOR=True, LIME=True):
+sns.set_theme()
+
+def main(TUNING=False, ANCHOR=True, LIME=True, STATISTICS=True):
     # read poems using simplereader
     poems_english = readPoems('tsv/english.tsv')
     poems_german = readPoems('tsv/emotion.german.tsv')
     poems_chinese = readPoems('tsv/chinese.tsv')
-
+    print(len(poems_english))
+    print(len(poems_german))
+    print(len(poems_chinese))
     #set up label dictionary
     label_dict = {
         'Sadness': 0, 'Humor': 1, 'Suspense': 2, 'Nostalgia': 3, 'Uneasiness': 4, 'Annoyance': 5, 'Awe / Sublime': 6, 'Vitality': 7, 'Beauty / Joy' : 8
@@ -39,11 +45,19 @@ def main(TUNING=False, ANCHOR=True, LIME=True):
 
     #array of most prominent label for each stanza
     labels = []
+    
+    #list of languages
+    lang = []
 
     # extract sentences with one label
-    #ipdb.set_trace()
     for poem in itertools.chain(poems_english, poems_german, poems_chinese):
         for stanza in poem[1:]:
+            if poem in poems_english:
+                lang.append(0)
+            elif poem in poems_german:
+                lang.append(1)
+            else:
+                lang.append(2)
             labelsPerStanza = []
             currentStanzaIndex = len(stanzas)
             newStanza = 1
@@ -60,7 +74,37 @@ def main(TUNING=False, ANCHOR=True, LIME=True):
             for label in labelsPerStanza:
                 counter[label_dict[label]] += 1
             labels.append(np.argmax(counter))
+    
+    # plot dataset statistics
+    if STATISTICS is True:
+        df = pd.DataFrame({"stanzas": stanzas, "labels": labels, "languages": lang})
+        
+        bar_labels = [lab.replace(" ", "") for lab in label_dict.keys()]
+        ger_values = df.loc[df["languages"] == 1, "labels"].value_counts()
+        en_values = df.loc[df["languages"] == 0, "labels"].value_counts()
+        ch_values = df.loc[df["languages"] == 2, "labels"].value_counts()
+        print(type(df.loc[df["languages"] == 1, "labels"].value_counts()))
+        ger_values[3] = 0
+        ger_values.sort_index(inplace=True)
+        en_values.sort_index(inplace=True)
+        ch_values.sort_index(inplace=True)
 
+        width = 0.5
+        
+        fig, ax = plt.subplots()
+        plt.grid(zorder=0, alpha=0.7)
+        ax.bar(bar_labels, ger_values, width, label='German')
+        ax.bar(bar_labels, en_values, width, bottom=ger_values, label='English')
+        ax.bar(bar_labels, ch_values, width, bottom=en_values+ger_values, label='Chinese')
+
+        ax.set_ylabel('Number of stanzas', fontsize=18)
+        ax.legend(prop={'size': 18})
+        ax.tick_params(axis='both', which='major', labelsize=18)
+        plt.xticks(rotation=16)
+        
+        plt.show()
+
+    
     # transform labels into numerical values and one hot encodings
     one_hot_labels = to_categorical(labels)
 
@@ -152,7 +196,7 @@ def main(TUNING=False, ANCHOR=True, LIME=True):
         emb = np.array(model.encode(stanzas[idx]))
         emb = emb.reshape((512,1))
         emb = emb.T
-        print("Predicted Probs: ", mdl.predict(emb, batch_size=1))
+        print("Predicted Probabilities: ", mdl.predict(emb, batch_size=1))
 
         explainer = LimeTextExplainer(class_names=class_names)
         exp = explainer.explain_instance(stanzas[idx], pipeline, num_features=6, top_labels=2)
@@ -172,6 +216,12 @@ def main(TUNING=False, ANCHOR=True, LIME=True):
         probs = mdl.predict(embedded, batch_size=embedded.shape[0])
         return [np.argmax(probs)]
     
+    def predict_second_label(stanza, predicted_label):
+        embedded = model.enoce(stanza)
+        probs = mdl.predict(embedded, batch_size=embedded.shape[0])
+        probs = np.delete(probs, predited_label)
+        return [np.argmax(probs)]
+    
     if ANCHOR is True:
         nlp = spacy.load('en_core_web_lg')
         explainer = anchor_text.AnchorText(nlp, class_names, use_unk_distribution=True)
@@ -180,7 +230,7 @@ def main(TUNING=False, ANCHOR=True, LIME=True):
         text = stanzas[idx]
         print(predict_label([text]))
         pred = explainer.class_names[predict_label([text])[0]]
-        #alternative =  explainer.class_names[1 - predict_label([text])[0]]
+        alternative =  explainer.class_names[predict_second_label([text])[0]]
         print('Prediction: %s' % pred)
         exp = explainer.explain_instance(text, predict_label, threshold=0.95)
         
@@ -198,4 +248,4 @@ def main(TUNING=False, ANCHOR=True, LIME=True):
 
 
 if __name__ == "__main__":
-    main(TUNING=False, ANCHOR=True, LIME=False)
+    main(TUNING=False, ANCHOR=False, LIME=True, STATISTICS=False)
