@@ -166,7 +166,7 @@ def main(TRAIN=False, TUNING=False, ANCHOR=False, LIME=True, STATISTICS=False):
                         max_config = (lr,epoch,middle_node)
         print(max_config)
         
-    #max_config = (0.01, 7, 150)
+    max_config = (0.01, 7, 150)
 
     if TRAIN is True:
     # use final model
@@ -202,10 +202,19 @@ def main(TRAIN=False, TUNING=False, ANCHOR=False, LIME=True, STATISTICS=False):
     wrong_classified_en = [idx for idx in wrong_classified_idx if idx < 167]
     wrong_classified_ger = [idx for idx in wrong_classified_idx if (idx >= 167 and idx < 688)]
     wrong_classified_ch = [idx for idx in wrong_classified_idx if idx >= 688]
+    
+    total_en = [idx for idx in indices[int(0.875*len(embeddings)):] if idx < 167]
+    total_ger = [idx for idx in indices[int(0.875*len(embeddings)):] if (idx >= 167 and idx < 688)]
+    total_ch = [idx for idx in indices[int(0.875*len(embeddings)):] if idx >= 688]
         
-    print("Number of wrong classified stanzas - English: ", len(wrong_classified_en))
-    print("Number of wrong classified stanzas - German: ", len(wrong_classified_ger))
-    print("Number of wrong classified stanzas - Chinese: ", len(wrong_classified_ch))
+    print("Number of wrongly classified stanzas - English: ", len(wrong_classified_en))
+    print("Number of wrongly classified stanzas - German: ", len(wrong_classified_ger))
+    print("Number of wrongly classified stanzas - Chinese: ", len(wrong_classified_ch))
+    
+    print("Total - English: ", len(total_en))
+    print("Total - German: ", len(total_ger))
+    print("Total - Chinese: ", len(total_ch))
+
     
     class_names = ['Sadness', 'Humor', 'Suspense', 'Nostalgia', 'Uneasiness', 'Annoyance', 'Awe / Sublime', 'Vitality', 'Beauty / Joy']
     #------------------------------------------------------------LIME--------------------------------------------------------------------------------------------
@@ -215,29 +224,7 @@ def main(TRAIN=False, TUNING=False, ANCHOR=False, LIME=True, STATISTICS=False):
         return mdl.predict(embedded, batch_size=embedded.shape[0])
 
     if LIME is True:
-        """
-        idx = 78
-        print("True Label: ", labels[idx])
-        emb = np.array(model.encode(stanzas[idx]))
-        emb = emb.reshape((512,1))
-        emb = emb.T
-        print("Predicted Probabilities: ", mdl.predict(emb, batch_size=1))
-
-        explainer = LimeTextExplainer(class_names=class_names)
-        exp = explainer.explain_instance(stanzas[idx], pipeline, num_features=6, top_labels=2)
-        top_labs = exp.available_labels()
-
-        print("Explanation for class {}".format(top_labs[0]))
-        print ('\n'.join(map(str, exp.as_list(label=top_labs[0]))))
-
-        print("Explanation for class {}".format(top_labs[1]))
-        print ('\n'.join(map(str, exp.as_list(label=top_labs[1]))))
-        
-        fig = exp.as_pyplot_figure(top_labs[0])
-        plt.show()
-        fig_2 = exp.as_pyplot_figure(top_labs[1])
-        """
-        
+        # apply LIME to 10 uncorreclty classified stanzas
         for idx in itertools.chain(wrong_classified_ger[:5], wrong_classified_en[:5]):
             print("True Label: ", one_hot_labels[idx])
             emb = np.array(model.encode(stanzas[idx]))
@@ -259,8 +246,35 @@ def main(TRAIN=False, TUNING=False, ANCHOR=False, LIME=True, STATISTICS=False):
             plt.show()
             fig_2 = exp.as_pyplot_figure(top_labs[1])
             plt.show()
+        # apply LIME to different correctly classified stanzas
+        idx = 5
+        print("True Label: ", one_hot_labels[idx])
+        emb = np.array(model.encode(stanzas[idx]))
+        emb = emb.reshape((512,1))
+        emb = emb.T
+        print("Predicted Probabilities: ", mdl.predict(emb, batch_size=1))
+        print(mdl.predict(emb, batch_size=1).sum())
         
+        explainer = LimeTextExplainer(class_names=class_names)
+        exp = explainer.explain_instance(stanzas[idx], pipeline, num_features=6, top_labels=2)
+        pickle.dump(exp, open( "explanation.pkl", "wb" ))
+        top_labs = exp.available_labels()
 
+        print("Explanation for class {}".format(top_labs[0]))
+        print ('\n'.join(map(str, exp.as_list(label=top_labs[0]))))
+
+        print("Explanation for class {}".format(top_labs[1]))
+        print ('\n'.join(map(str, exp.as_list(label=top_labs[1]))))
+            
+        fig = exp.as_pyplot_figure(top_labs[0])
+        plt.legend(prop={'size': 20})
+        plt.tick_params(axis='both', which='major', labelsize=20)
+        plt.show()
+        fig_2 = exp.as_pyplot_figure(top_labs[1])
+        plt.legend(prop={'size': 20})
+        plt.tick_params(axis='both', which='major', labelsize=20)
+        plt.show()
+        
     #----------------------------------------------------------ANCHOR---------------------------------------------------------------------------------------------
     def predict_label(stanza):
         embedded = model.encode(stanza)
