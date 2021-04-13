@@ -8,7 +8,8 @@ Different explainability techniques were tested. This repository contains the co
 LIME and ProtoDash were used in the AIX360 library (https://github.com/Trusted-AI/AIX360).
 
 For applying the explainability techniques, the following notebooks were used as application guideline.
-LIME: https://marcotcr.github.io/lime/tutorials/Lime%20-%20multiclass.html
-Anchor: https://github.com/marcotcr/anchor/blob/master/notebooks/Anchor%20for%20text.ipynb
+
+LIME: https://marcotcr.github.io/lime/tutorials/Lime%20-%20multiclass.html,
+Anchor: https://github.com/marcotcr/anchor/blob/master/notebooks/Anchor%20for%20text.ipynb,
 ProtoDash: https://github.com/Trusted-AI/AIX360/blob/master/examples/protodash/Protodash%20Text%20example%20SPAM%20HAM.ipynb
 
